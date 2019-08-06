@@ -43,8 +43,8 @@ class TypescriptFileGenerator:
         self.code += ['']
 
     def _initialize_class(self):
-        self.add_copyright(self.options['copyright'])
         self.code = []
+        self.add_copyright(self.options['copyright'])
 
     def generate(self):
         for type_descriptor, value in self.schema.items():
