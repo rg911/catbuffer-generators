@@ -1,48 +1,50 @@
 from .Helpers import indent
 
+
 class TypescriptMethodGenerator:
     """Typescript method generator"""
 
-    def __init__(self, scope, return_type, name, params, exception_list='', static_method=False):
+    def __init__(self, scope, return_type, method_name, params, exception_list='', static_method=False):
         # pylint: disable-msg=too-many-arguments
-        self.name = name
+        self.name = method_name
         joint_list = ', '.join(params)
         constructor_params = []
-        if name == 'constructor':
-            for p in joint_list.split(','):
-                constructor_params.append('{0}'.format(p))
-        parameter = ', '.join(constructor_params) if name == 'constructor' else ', '.join(params)
-        line = '{0} static'.format(scope) if static_method else '{0}'.format(scope)
+        if method_name == 'constructor':
+            for param in joint_list.split(','):
+                constructor_params.append('{0}'.format(param))
+        parameter = ', '.join(constructor_params) if method_name == 'constructor' else ', '.join(params)
+        method_line = '{0} static'.format(scope) if static_method else '{0}'.format(scope)
         if return_type:
-            line += ' {0}({1}): {2}'.format(self.name, parameter, return_type)
+            method_line += ' {0}({1}): {2}'.format(self.name, parameter, return_type)
         else:
-            line += ' {0}({1})'.format(self.name, parameter)
+            method_line += ' {0}({1})'.format(self.name, parameter)
         if exception_list:
-            line += ' {0}'.format(exception_list)
-        line += ' {'
-        self.method_output = [line]
-        self.annotation_output = []
-        self.documentation_output = []
-        self._indent_num = 1
+            method_line += ' {0}'.format(exception_list)
+        method_line += ' {'
 
-    def increment_indent(self):
-        self._indent_num += 1
+        self.annotation_output = []
+        self.method_output = [method_line]
+        self._indent_num = 1
+        self.documentation_output = []
 
     def decrement_indent(self):
         self._indent_num -= 1
 
-    def add_instructions(self, instructions, add_semicolon=True):
-        for instruction in instructions:
-            if add_semicolon:
-                instruction += ';'
-            self.method_output.append(indent(instruction, self._indent_num))
+    def increment_indent(self):
+        self._indent_num += 1
 
     def get_method(self):
         return self.documentation_output + self.annotation_output + self.method_output + ['}']
 
-    def add_annotation(self, annotation):
-        self.annotation_output.append(annotation)
+    def add_instructions(self, method_instructions, add_semicolon=True):
+        for instruction in method_instructions:
+            if add_semicolon:
+                instruction += ';'
+            self.method_output.append(indent(instruction, self._indent_num))
 
-    def add_documentations(self, documentations):
-        for documentation in documentations:
+    def add_documentations(self, method_documentations):
+        for documentation in method_documentations:
             self.documentation_output.append(documentation)
+
+    def add_annotation(self, method_annotation):
+        self.annotation_output.append(method_annotation)

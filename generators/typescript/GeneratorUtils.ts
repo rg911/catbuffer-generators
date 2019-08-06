@@ -92,24 +92,6 @@ export class GeneratorUtils {
 		return newArray;
 	}
 
-	/**
-     * Genreate fixed size array
-     * @param {Uint8Array} array A Uint8Array.
-	 * @param {number} size Array size.
-     * @returns {Uint8Array}
-     */
-	public static fitByteArray (array: Uint8Array, size: number): Uint8Array {
-		if (array.length > size) {
-			throw new RangeError('Data size larger than allowed');
-		} else if (array.length < size) {
-			const newArray = new Uint8Array(size);
-			newArray.fill(0);
-			newArray.set(array, size - array.length);
-			return newArray;
-		}
-		return array;
-	}
-
 	/** Converts an unsigned byte to a signed byte with the same binary representation.
      * @param {number} input An unsigned byte.
      * @returns {number} A signed byte with the same binary representation as the input.
