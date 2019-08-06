@@ -22,27 +22,27 @@ class TypescriptGeneratorBase(ABC):
 
     @abstractmethod
     def _create_public_declarations(self):
-        raise NotImplementedError('need to override method')
+        raise NotImplementedError('need to override method - typescript generator')
 
     @abstractmethod
     def _add_private_declarations(self):
-        raise NotImplementedError('need to override method')
+        raise NotImplementedError('need to override method - typescript generator')
 
     @abstractmethod
     def _calculate_obj_size(self, new_getter):
-        raise NotImplementedError('need to override method')
+        raise NotImplementedError('need to override method - typescript generator')
 
     @abstractmethod
     def _add_serialize_custom(self, serialize_method):
-        raise NotImplementedError('need to override method')
+        raise NotImplementedError('need to override method - typescript generator')
 
     @abstractmethod
     def _add_load_from_binary_custom(self, load_from_binary_method):
-        raise NotImplementedError('need to override method')
+        raise NotImplementedError('need to override method - typescript generator')
 
     @abstractmethod
     def _add_getters_field(self):
-        raise NotImplementedError('need to override method')
+        raise NotImplementedError('need to override method - typescript generator')
 
     @staticmethod
     def _foreach_attributes(attributes, callback, context=None):
@@ -157,7 +157,8 @@ class TypescriptGeneratorBase(ABC):
         self._add_size_getter()
         self._generate_interface_methods()
         self._add_serialize_method()
-        self.class_output += ['}']
+        endline = ['}']
+        self.class_output += endline
 
     def generate(self):
         self._add_class_definition()
