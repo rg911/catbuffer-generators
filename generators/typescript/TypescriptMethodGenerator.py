@@ -21,9 +21,12 @@ class TypescriptMethodGenerator:
         if exception_list:
             method_line += ' {0}'.format(exception_list)
         method_line += ' {'
-
+        output_lines = []
+        if len(method_line) > 120:
+            output_lines += ['// tslint:disable-next-line: max-line-length']
+        output_lines += [method_line]
         self.annotation_output = []
-        self.method_output = [method_line]
+        self.method_output = output_lines
         self._indent_num = 1
         self.documentation_output = []
 
@@ -40,6 +43,8 @@ class TypescriptMethodGenerator:
         for instruction in method_instructions:
             if add_semicolon:
                 instruction += ';'
+            if len(instruction) > 120:
+                self.method_output.append(indent('// tslint:disable-next-line: max-line-length', self._indent_num))
             self.method_output.append(indent(instruction, self._indent_num))
 
     def add_documentations(self, method_documentations):

@@ -66,7 +66,7 @@ class TypescriptGeneratorBase(ABC):
                                                             ['payload: Uint8Array'],
                                                             '',
                                                             True)
-        load_from_binary_method.add_instructions(['let byteArray = Array.from(payload)'],
+        load_from_binary_method.add_instructions(['const byteArray = Array.from(payload)'],
                                                  True)
         self._add_load_from_binary_custom(load_from_binary_method)
         self._add_method_documentation(load_from_binary_method,
@@ -131,7 +131,9 @@ class TypescriptGeneratorBase(ABC):
             self.required_import.add(full_class)
 
     def get_required_import(self):
-        return self.required_import
+        import_list = list(self.required_import)
+        import_list.sort()
+        return import_list
 
     def get_generated_name(self):
         return self.generated_class_name

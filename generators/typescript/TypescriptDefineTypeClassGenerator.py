@@ -36,7 +36,7 @@ class TypescriptDefineTypeClassGenerator(TypescriptClassGenerator):
     def _add_constructor(self):
         attribute_name = self.class_schema['name']
         param_type = get_generated_type(self.schema, self.class_schema)
-        new_setter = TypescriptMethodGenerator('', '', 'constructor ', [attribute_name + ': ' + param_type])
+        new_setter = TypescriptMethodGenerator('', '', 'constructor', [attribute_name + ': ' + param_type])
 
         setters = {
             AttributeType.SIMPLE: self._add_simple_setter,

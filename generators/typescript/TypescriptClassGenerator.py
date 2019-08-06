@@ -101,7 +101,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         condition_type = '{0}.{1}'.format(get_generated_class_name(condition_type_attribute['type'], condition_type_attribute, self.schema),
                                           create_enum_name(attribute['condition_value']))
         if add_var_declare:
-            code_wirter.add_instructions(['let {0} = null'.format(attribute['name'])], True)
+            code_wirter.add_instructions(['let {0}'.format(attribute['name'])], True)
         code_wirter.add_instructions(['if ({0}{1} {2} {3}) {{'.format(object_prefix, attribute['condition'], if_condition, condition_type)],
                                      False)
         for line in code_lines:
@@ -110,7 +110,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
 
     def _add_method_condition(self, attribute, method_code_writer):
         if 'condition' in attribute:
-            lines = ['throw new Error("{0} is not set to {1}.")'.format(
+            lines = ['throw new Error(\'{0} is not set to {1}.\')'.format(
                 attribute['condition'], create_enum_name(attribute['condition_value']))]
             self._add_if_condition_for_variable_if_needed(attribute, method_code_writer, 'this.', '!=', lines)
 
@@ -164,7 +164,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
             for condition_attribute in condition_attribute_list:
                 condition_names.append('!' + condition_attribute['name'])
             code_lines = ['if (({0}) || ({1})) {{'.format(' && '.join(condition_names).replace('!', ''), ' && '.join(condition_names))]
-            code_lines += [indent('throw new Error(\'Invalid conditional parameters\')')]
+            code_lines += [indent('throw new Error(\'Invalid conditional parameters\');')]
             code_lines += ['}']
         return code_lines
 
@@ -241,7 +241,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         if self.base_class_name is not None:
             new_getter.add_instructions(['let size: {0} = super.getSize()'.format(return_type)])
         else:
-            new_getter.add_instructions(['let size: {0} = 0'.format(return_type)])
+            new_getter.add_instructions(['let size = 0'])
         self._recursive_attribute_iterator(self.name, self._add_size_values, new_getter,
                                            [self.base_class_name, self._get_body_class_name()])
         new_getter.add_instructions(['return size'])
@@ -294,7 +294,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
     def _add_attribute_condition_if_needed(self, attribute, method_writer, obj_prefix, code_lines,
                                            add_var_declare=False, add_semicolon=True):
         if 'condition' in attribute:
-            self._add_if_condition_for_variable_if_needed(attribute, method_writer, obj_prefix, '==',
+            self._add_if_condition_for_variable_if_needed(attribute, method_writer, obj_prefix, '===',
                                                           code_lines, add_var_declare, add_semicolon)
         else:
             method_writer.add_instructions(code_lines, add_semicolon)
@@ -322,7 +322,11 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         attribute_typename = attribute['type']
         attribute_sizename = attribute['size']
         attribute_name = attribute['name']
-        load_from_binary_method.add_instructions(['const {0} = []'.format(attribute_name)])
+        var_type = get_generated_type(self.schema, attribute)
+        load_from_binary_method.add_instructions(['const {0}{1} = []'
+                                                  .format(attribute_name,
+                                                          '' if attribute_typename in ['number', 'Uint8Array'] else
+                                                          ': ' + var_type)])
         load_from_binary_method.add_instructions(['for (let i = 0; i < {0}; i++) {{'.format(attribute_sizename)], False)
 
         if is_byte_type(attribute_typename):
@@ -686,7 +690,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         condition_vars = list(map(lambda x: x['name'], condition_attribute_list))
         var_list = [x for x in self._create_list(self.name, self._add_to_variable_list,
                                                  condition_attribute_list).split(', ') if x not in condition_vars]
-        var_list.extend(['null' if x != condition_attribute['name'] else x for x in condition_vars])
+        var_list.extend(['undefined' if x != condition_attribute['name'] else x for x in condition_vars])
         return ', '.join(var_list)
 
     def _add_factory_method_condition(self, condition_attribute_list):
