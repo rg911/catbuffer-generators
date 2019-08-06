@@ -36,11 +36,13 @@ class TypescriptFileGenerator:
 
     def add_copyright(self, copyright_file):
         if os.path.isfile(copyright_file):
+            self.code = ['// tslint:disable: jsdoc-format']
             with open(copyright_file) as header:
-                self.code = [line.strip() for line in header]
+                self.code += [line.strip() for line in header]
 
     def set_import(self):
-        self.code += ['']
+        # self.code += ['']
+        pass
 
     def _initialize_class(self):
         self.code = []

@@ -112,12 +112,14 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         if 'condition' in attribute:
             lines = ['throw new Error(\'{0} is not set to {1}.\')'.format(
                 attribute['condition'], create_enum_name(attribute['condition_value']))]
-            self._add_if_condition_for_variable_if_needed(attribute, method_code_writer, 'this.', '!=', lines)
+            self._add_if_condition_for_variable_if_needed(attribute, method_code_writer, 'this.', '!==', lines)
 
     def _add_getter(self, attribute, schema):
         return_type = get_generated_type(schema, attribute)
         attribute_name = attribute['name']
         self._add_required_import_if_needed(return_type)
+        if attribute in self.conditional_param_list:
+            return_type += ' | undefined'
         getter = TypescriptMethodGenerator('public', return_type, self._get_generated_getter_name(attribute_name), [])
 
         if 'aggregate_class' in attribute:
@@ -234,7 +236,9 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
             attribute_name = type_descriptor
             if is_enum_type(attribute_type) and attribute_name == attribute['type']:
                 return '{0}; // {1}'.format(value['size'], attribute['name'])
-        return 'this.{0}.getSize();'.format(attribute['name'])
+        is_condition = attribute in self.conditional_param_list
+        return 'this.{0}{1}.getSize();'.format(attribute['name'],
+                                               '!' if is_condition else '')
 
     def _calculate_obj_size(self, new_getter):
         return_type = 'number'
@@ -434,6 +438,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         attribute_bytes_name = self._get_serialize_name(attribute_name)
         is_custom_type_enum = False
         customer_enum_size = 0
+        is_condition = attribute in self.conditional_param_list
         for type_descriptor, value in self.schema.items():
             enum_attribute_type = value['type']
             enum_attribute_name = type_descriptor
@@ -444,7 +449,9 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
             lines = ['const {0} = GeneratorUtils.uintToBuffer(this.{1}, {2})'
                      .format(attribute_bytes_name, attribute_name, customer_enum_size)]
         else:
-            lines = ['const {0} = this.{1}.serialize()'.format(attribute_bytes_name, attribute_name)]
+            lines = ['const {0} = this.{1}{2}.serialize()'.format(attribute_bytes_name,
+                                                                  attribute_name,
+                                                                  '!' if is_condition else '')]
         lines += ['newArray = GeneratorUtils.concatTypedArrays(newArray, {0})'.format(attribute_bytes_name)]
         self._add_attribute_condition_if_needed(attribute, serialize_method, 'this.', lines, False)
 
