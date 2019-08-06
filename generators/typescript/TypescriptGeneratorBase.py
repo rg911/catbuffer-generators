@@ -116,14 +116,22 @@ class TypescriptGeneratorBase(ABC):
 
     @staticmethod
     def _add_method_documentation(method_generator, description_text, parameters, return_text):
+        description_text_line = format_description(description_text).replace(' \\note', '[*line-break*]\\note')
         method_generator.add_documentations(['/**'])
-        method_generator.add_documentations([' * {0}'.format(format_description(description_text))])
+        for line in description_text_line.split('[*line-break*]'):
+            method_generator.add_documentations([' * {0}'.format(format_description(line.replace('\\note', '@note')))])
         method_generator.add_documentations([' *'])
         if parameters:
             for name, description in parameters:
-                method_generator.add_documentations([' * @param {0} {1}'.format(name, format_description(description))])
+                param_text_lines = format_description(description).replace(' \\note', '[*line-break*]\\note').split('[*line-break*]')
+                method_generator.add_documentations([' * @param {0} {1}'.format(name, format_description(param_text_lines[0]))])
+                for line in param_text_lines[1:]:
+                    method_generator.add_documentations([' * {0}'.format(format_description(line.replace('\\note', '@note')))])
         if return_text:
-            method_generator.add_documentations([' * @return {0}'.format(format_description(return_text))])
+            return_text_lines = format_description(return_text).replace(' \\note', '[*line-break*]\\note').split('[*line-break*]')
+            method_generator.add_documentations([' * @return {0}'.format(format_description(return_text_lines[0]))])
+            for line in return_text_lines[1:]:
+                method_generator.add_documentations([' * {0}'.format(format_description(line.replace('\\note', '@note')))])
         method_generator.add_documentations([' */'])
 
     def _add_required_import(self, full_class):
