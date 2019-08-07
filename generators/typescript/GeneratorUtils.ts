@@ -76,7 +76,7 @@ export class GeneratorUtils {
      */
 	public static uint64ToBuffer(uintValue: number[]): Uint8Array {
 		const uint32Array = new Uint32Array(uintValue);
-		return new Uint8Array(uint32Array.buffer).reverse();
+		return new Uint8Array(uint32Array.buffer);
 	}
 
 	/**
