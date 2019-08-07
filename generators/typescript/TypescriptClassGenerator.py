@@ -500,11 +500,10 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
     def _create_public_declarations(self):
         if self.conditional_param_list:
             self._add_constructors()
-            self._add_factory_methods()
+            # self._add_factory_methods()
         else:
             self._add_constructor()
-            if self.base_class_name is None:
-                self._add_factory_method()
+            # self._add_factory_method()
 
     def _add_load_from_binary_custom(self, load_from_binary_method):
         if self.base_class_name is not None:
@@ -612,11 +611,11 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                                                     get_generated_class_name(variable['type'], variable, self.schema),
                                                     ', '.join(var_list)
                                                     )
-        return 'this.{0} = {1}.create({2})'.format(variable['name'],
-                                                   get_generated_class_name(variable['type'], variable, self.schema),
-                                                   self._create_list(variable['type'],
-                                                                     self._add_to_variable_list,
-                                                                     condition_attribute_list))
+        return 'this.{0} = new {1}({2})'.format(variable['name'],
+                                                get_generated_class_name(variable['type'], variable, self.schema),
+                                                self._create_list(variable['type'],
+                                                                  self._add_to_variable_list,
+                                                                  condition_attribute_list))
 
     def _add_constructor_internal(self, condition_attribute_list):
         constructor_method = TypescriptMethodGenerator('public', '', 'constructor',
