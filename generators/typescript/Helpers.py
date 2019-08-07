@@ -64,7 +64,7 @@ def get_generated_type(schema, attribute):
     if attribute_type == AttributeType.ARRAY:
         return '{0}[]'.format(typename)
     if attribute_type == AttributeType.FLAGS:
-        return '{0}'.format(typename)
+        return 'number'
     return typename
 
 
