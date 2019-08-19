@@ -56,6 +56,8 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
 
     def _get_body_class_name(self):
         body_name = self.name if not self.name.startswith('Embedded') else self.name[8:]
+        # Special case for AggregateTransactionBody
+        body_name = body_name.replace('Bonded', '').replace('Complete', '')
         return '{0}Body'.format(body_name)
 
     def _add_private_declarations(self):
@@ -286,6 +288,14 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                             self.generated_class_name, attribute_val['value'],
                             get_comment_from_name(self.generated_class_name))
                     continue
+                elif attribute_val['disposition'] == TypeDescriptorDisposition.Var.value:
+                    attribute_val['type'] = 'byte'
+                    callback(attribute_val, context)
+                    continue
+                elif attribute_val['disposition'] == TypeDescriptorDisposition.Fill.value:
+                    attribute_val['type'] = 'array'
+                    callback(attribute_val, context)
+                    continue
             else:
                 callback(attribute_val, context)
 
@@ -315,9 +325,13 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
 
     def _load_from_binary_buffer(self, attribute, load_from_binary_method):
         size = get_attribute_size(self.schema, attribute)
-        lines = ['{2}{0} = GeneratorUtils.getBytes(Uint8Array.from(byteArray), {1})'
-                 .format(attribute['name'], size, '' if self._is_conditional_attribute(attribute) else 'const ')]
-        lines += ['byteArray.splice(0, {0})'.format(size)]
+        if size != 0:
+            lines = ['{2}{0} = GeneratorUtils.getBytes(Uint8Array.from(byteArray), {1})'
+                     .format(attribute['name'], size, '' if self._is_conditional_attribute(attribute) else 'const ')]
+            lines += ['byteArray.splice(0, {0})'.format(size)]
+        else:
+            lines = ['{1}{0} = Uint8Array.from(byteArray)'
+                     .format(attribute['name'], '' if self._is_conditional_attribute(attribute) else 'const ')]
         load_from_binary_method.add_instructions(lines)
         if len(self.load_from_binary_atrribute_list) <= 1:
             load_from_binary_method.add_instructions(['return new {0}({1})'.format(self.generated_class_name, attribute['name'])])

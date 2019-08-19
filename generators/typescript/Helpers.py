@@ -4,6 +4,8 @@ from enum import Enum
 class TypeDescriptorDisposition(Enum):
     Inline = 'inline'
     Const = 'const'
+    Var = 'var'
+    Fill = 'fill'
 
 
 def indent(code, n_indents=1):
