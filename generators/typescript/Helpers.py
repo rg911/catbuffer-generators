@@ -202,3 +202,6 @@ def get_real_attribute_type(attribute):
 
 def is_flags_enum(name):
     return name.endswith('Flags')
+
+def is_reserved_field(attribute):
+    return '_Reserved' in attribute['name']

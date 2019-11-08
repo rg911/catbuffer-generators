@@ -2,7 +2,7 @@ from .Helpers import create_enum_name, get_default_value, get_comment_from_name
 from .Helpers import get_real_attribute_type, TypeDescriptorDisposition, get_attribute_if_size, get_byte_convert_method_name
 from .Helpers import get_generated_class_name, indent, get_attribute_size
 from .Helpers import get_generated_type, get_attribute_property_equal, AttributeType, is_byte_type
-from .Helpers import get_read_method_name, is_enum_type
+from .Helpers import get_read_method_name, is_enum_type, is_reserved_field
 from .Helpers import get_comments_from_attribute, format_import
 from .TypescriptGeneratorBase import TypescriptGeneratorBase
 from .TypescriptMethodGenerator import TypescriptMethodGenerator
@@ -57,7 +57,8 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
     def _get_body_class_name(self):
         body_name = self.name if not self.name.startswith('Embedded') else self.name[8:]
         # Special case for AggregateTransactionBody
-        body_name = body_name.replace('Bonded', '').replace('Complete', '')
+        if self.name.startswith('Aggregate') and self.name.endswith('Transaction'):
+            body_name = 'AggregateTransaction'
         return '{0}Body'.format(body_name)
 
     def _add_private_declarations(self):
@@ -207,7 +208,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
 
     @staticmethod
     def check_should_generate_class(name):
-        return (name.startswith('Embedded')
+        return ((name.startswith('Embedded') and not name.endswith('Header'))
                 or name.startswith('Mosaic')
                 or name.endswith('Transaction')
                 or name.endswith('Mosaic')
@@ -542,12 +543,14 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
     def _add_to_variable_list(self, attribute, context):
         param_list, condition_attribute = context
         name = attribute['name']
-        if self._should_declaration(attribute) and self._should_add_base_on_condition(attribute, condition_attribute):
+        if self._should_declaration(attribute) and self._should_add_base_on_condition(attribute, condition_attribute) and \
+                not is_reserved_field(attribute):
             param_list.append(name)
 
     def _add_to_param(self, attribute, context):
         param_list, condition_attribute_list = context
-        if self._should_declaration(attribute) and self._should_add_base_on_condition(attribute, condition_attribute_list):
+        if self._should_declaration(attribute) and self._should_add_base_on_condition(attribute, condition_attribute_list) and \
+                not is_reserved_field(attribute):
             is_condition_attribute = self._is_attribute_conditional(attribute, condition_attribute_list)
             attribute_name = attribute['name']
             attribute_type = get_generated_type(self.schema, attribute)
@@ -563,6 +566,8 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
     def _create_list(self, name, callback, condition_attribute_list):
         param_list = []
         self._recursive_attribute_iterator(name, callback, (param_list, condition_attribute_list), [])
+        if not param_list:
+            return ''
         param_string = param_list[0]
         for param in param_list[1:]:
             param_string += ', {0}'.format(param)
@@ -588,7 +593,8 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         param_list = []
         self._recursive_attribute_iterator(name, callback, (param_list, condition_attribute_list), [])
         param_list = self._reorder_condition_attribute_if_needed(param_list, condition_attribute_list)
-
+        if not param_list:
+            return ''
         param_string = object_name + '.' + param_list[0]
         for param in param_list[1:]:
             param_string += ', {0}'.format(object_name + '.' + param)
@@ -599,7 +605,8 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
 
     def _add_name_comment(self, attribute, context):
         comment_list, condition_attribute_list = context
-        if self._should_declaration(attribute) and self._should_add_base_on_condition(attribute, condition_attribute_list):
+        if self._should_declaration(attribute) and self._should_add_base_on_condition(attribute, condition_attribute_list) and \
+                not is_reserved_field(attribute):
             comment_list.append((attribute['name'], get_comments_from_attribute(attribute, False)))
 
     def _create_name_comment_list(self, name, condition_variable):
@@ -657,6 +664,8 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                                                                                                   condition_attribute_list,
                                                                                                   variable['name']))
                     self._add_required_import(format_import(get_generated_class_name(variable['type'], variable, self.schema)))
+                elif is_reserved_field(variable):
+                    constructor_method.add_instructions(['this.{0} = {1}'.format(variable['name'], get_default_value(variable))])
                 else:
                     constructor_method.add_instructions(['this.{0} = {0}'.format(variable['name'])])
                     self.load_from_binary_atrribute_list.append(variable['name'])
