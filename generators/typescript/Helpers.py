@@ -207,14 +207,16 @@ def get_real_attribute_type(attribute):
 
 
 def get_type_by_attribute(attribute):
+    
     if is_var_array(attribute):
-        return AttributeType.VAR_ARRAY
+        return AttributeType.UNKNOWN
+        # disabled temporary before fixing Embedded transaction deserialization issue
+        # return AttributeType.VAR_ARRAY
 
     if is_fill_array(attribute):
-        return AttributeType.FILL_ARRAY
-
-    # if is_count_size_field(attribute):
-    #     return AttributeType.SIZE_FIELD
+        return AttributeType.UNKNOWN
+        # disabled temporary before fixing Embedded transaction deserialization issue
+        # return AttributeType.FILL_ARRAY
 
     return AttributeType.UNKNOWN
 
