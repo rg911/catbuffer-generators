@@ -1,8 +1,8 @@
 from .Helpers import create_enum_name, get_default_value, get_comment_from_name
 from .Helpers import get_real_attribute_type, TypeDescriptorDisposition, get_attribute_if_size, get_byte_convert_method_name
-from .Helpers import get_generated_class_name, indent, get_attribute_size
-from .Helpers import get_generated_type, get_attribute_property_equal, AttributeType, is_byte_type
-from .Helpers import get_read_method_name, is_enum_type, is_reserved_field
+from .Helpers import get_generated_class_name, indent, get_attribute_size, get_builtin_type, is_fill_array
+from .Helpers import get_generated_type, get_attribute_property_equal, AttributeType, is_byte_type, is_var_array
+from .Helpers import get_read_method_name, is_enum_type, is_reserved_field, is_array
 from .Helpers import get_comments_from_attribute, format_import
 from .TypescriptGeneratorBase import TypescriptGeneratorBase
 from .TypescriptMethodGenerator import TypescriptMethodGenerator
@@ -23,6 +23,8 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         self.condition_param = []
         self.load_from_binary_atrribute_list = []
         self._add_required_import(format_import('GeneratorUtils'))
+        self.condition_binary_declare_map = {}
+        self._load_from_binary_condition_lines = []
 
         if 'layout' in self.class_schema:
             # Find base class
@@ -107,9 +109,35 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
             code_wirter.add_instructions(['let {0}'.format(attribute['name'])], True)
         code_wirter.add_instructions(['if ({0}{1} {2} {3}) {{'.format(object_prefix, attribute['condition'], if_condition, condition_type)],
                                      False)
+
         for line in code_lines:
             code_wirter.add_instructions([indent(line)], add_semicolon)
         code_wirter.add_instructions(['}'], False)
+
+    def _add_if_condition_for_variable_if_needed_load_binary(self, attribute, code_wirter, object_prefix,
+                                                             if_condition, add_var_declare=False, add_semicolon=True):
+        condition_type_attribute = get_attribute_property_equal(self.schema, self.class_schema['layout'], 'name', attribute['condition'])
+        condition_type = '{0}.{1}'.format(get_generated_class_name(condition_type_attribute['type'], condition_type_attribute, self.schema),
+                                          create_enum_name(attribute['condition_value']))
+        self._add_load_from_binary_condition_not_declared(attribute, code_wirter, add_semicolon)
+
+        if add_var_declare:
+            self._load_from_binary_condition_lines += ['let {0};'.format(attribute['name'])]
+        self._load_from_binary_condition_lines += ['if ({0}{1} {2} {3}) {{'.format(
+            object_prefix, attribute['condition'], if_condition, condition_type)]
+        self._load_from_binary_condition_lines += [indent('{2}{0} = {1}.loadFromBinary({3});'.format(
+            attribute['name'], get_generated_class_name(attribute['type'], attribute, self.schema),
+            '' if self._is_conditional_attribute(attribute) else 'const ',
+            attribute['condition'] + 'ConditionBytes'))]
+        self._load_from_binary_condition_lines += ['}']
+
+    def _add_load_from_binary_condition_not_declared(self, attribute, code_wirter, add_semicolon=True):
+        if attribute['condition'] not in self.condition_binary_declare_map.keys():
+            code_wirter.add_instructions(['const {0}ConditionBytes = Uint8Array.from(byteArray.slice(0, {1}))'.format(
+                attribute['condition'], str(get_attribute_size(self.schema, attribute)))], add_semicolon)
+            code_wirter.add_instructions(['byteArray.splice(0, {0})'.format(
+                str(get_attribute_size(self.schema, attribute)))], add_semicolon)
+        self.condition_binary_declare_map[attribute['condition']] = True
 
     def _add_method_condition(self, attribute, method_code_writer):
         if 'condition' in attribute:
@@ -137,7 +165,10 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                 AttributeType.BUFFER: self._add_buffer_getter,
                 AttributeType.ARRAY: self._add_simple_getter,
                 AttributeType.CUSTOM: self._add_simple_getter,
-                AttributeType.FLAGS: self._add_simple_getter
+                AttributeType.FLAGS: self._add_simple_getter,
+                AttributeType.FLAGS: self._add_simple_getter,
+                AttributeType.FILL_ARRAY: self._add_simple_getter,
+                AttributeType.VAR_ARRAY: self._add_simple_getter
             }
             attribute_kind = get_real_attribute_type(attribute)
             getters[attribute_kind](attribute, getter)
@@ -223,7 +254,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
             line += '{0}; // {1}'.format(attribute['size'], attribute['name'])
         elif attribute_kind == AttributeType.BUFFER:
             line += 'this.{0}.length;'.format(attribute['name'])
-        elif attribute_kind == AttributeType.ARRAY:
+        elif attribute_kind in (AttributeType.ARRAY, AttributeType.VAR_ARRAY, AttributeType.FILL_ARRAY):
             line = ''
             line += 'this.{0}.forEach((o) => size += o.getSize());'.format(attribute['name'])
         elif attribute_kind == AttributeType.FLAGS:
@@ -231,7 +262,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         else:
             line += self._get_custom_attribute_size_getter(attribute)
 
-        self._add_attribute_condition_if_needed(attribute, method_writer, 'this.', [line], False, False)
+        self._add_attribute_condition_if_needed(attribute, method_writer, 'this.', [line], False, False, False)
 
     def _get_custom_attribute_size_getter(self, attribute):
         for type_descriptor, value in self.schema.items():
@@ -289,12 +320,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                             self.generated_class_name, attribute_val['value'],
                             get_comment_from_name(self.generated_class_name))
                     continue
-                elif attribute_val['disposition'] == TypeDescriptorDisposition.Var.value:
-                    attribute_val['type'] = 'byte'
-                    callback(attribute_val, context)
-                    continue
-                elif attribute_val['disposition'] == TypeDescriptorDisposition.Fill.value:
-                    attribute_val['type'] = 'array'
+                elif is_var_array(attribute_val) or is_fill_array(attribute_val):
                     callback(attribute_val, context)
                     continue
             else:
@@ -306,11 +332,15 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                 if attribute['name'] != condition_attribute['name']:
                     code_lines.append('{0}{1} = {2}'.format(obj_prefix, condition_attribute['name'], get_default_value(attribute)))
 
-    def _add_attribute_condition_if_needed(self, attribute, method_writer, obj_prefix, code_lines,
+    def _add_attribute_condition_if_needed(self, attribute, method_writer, obj_prefix, code_lines, is_load_from_binary=False,
                                            add_var_declare=False, add_semicolon=True):
         if 'condition' in attribute:
-            self._add_if_condition_for_variable_if_needed(attribute, method_writer, obj_prefix, '===',
-                                                          code_lines, add_var_declare, add_semicolon)
+            if is_load_from_binary:
+                self._add_if_condition_for_variable_if_needed_load_binary(attribute, method_writer, obj_prefix, '===',
+                                                                          add_var_declare, add_semicolon)
+            else:
+                self._add_if_condition_for_variable_if_needed(attribute, method_writer, obj_prefix, '===',
+                                                              code_lines, add_var_declare, add_semicolon)
         else:
             method_writer.add_instructions(code_lines, add_semicolon)
 
@@ -320,7 +350,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         read_method_name = get_byte_convert_method_name(size).format(const_delaration)
         lines = ['{2}{0} = {1}'.format(attribute['name'], read_method_name, '' if self._is_conditional_attribute(attribute) else 'const ')]
         lines += ['byteArray.splice(0, {0})'.format(size)]
-        self._add_attribute_condition_if_needed(attribute, load_from_binary_method, '', lines, True)
+        self._add_attribute_condition_if_needed(attribute, load_from_binary_method, '', lines, True, True)
         if len(self.load_from_binary_atrribute_list) <= 1:
             load_from_binary_method.add_instructions(['return new {0}({1})'.format(self.generated_class_name, attribute['name'])])
 
@@ -384,7 +414,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                      .format(attribute['name'], get_generated_class_name(attribute['type'], attribute, self.schema),
                              '' if self._is_conditional_attribute(attribute) else 'const ')]
             lines += ['byteArray.splice(0, {0}.getSize())'.format(attribute['name'])]
-        self._add_attribute_condition_if_needed(attribute, load_from_binary_method, '', lines, True)
+        self._add_attribute_condition_if_needed(attribute, load_from_binary_method, '', lines, True, True)
 
     def _load_from_binary_flags(self, attribute, load_from_binary_method):
         size = get_attribute_size(self.schema, attribute)
@@ -392,9 +422,38 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
         read_method_name = get_byte_convert_method_name(size).format(const_declare)
         lines = ['{2}{0} = {1}'.format(attribute['name'], read_method_name, '' if self._is_conditional_attribute(attribute) else 'const ')]
         lines += ['byteArray.splice(0, {0})'.format(size)]
-        self._add_attribute_condition_if_needed(attribute, load_from_binary_method, '', lines, True)
+        self._add_attribute_condition_if_needed(attribute, load_from_binary_method, '', lines, True, True)
         if len(self.load_from_binary_atrribute_list) <= 1:
             load_from_binary_method.add_instructions(['return new {0}({1})'.format(self.generated_class_name, attribute['name'])])
+
+    def _load_from_binary_field(self, attribute, load_from_binary_method):
+        attribute_name = attribute['name']
+        read_method_name = 'stream.{0}()'.format(get_read_method_name(attribute['size']))
+        size = get_attribute_size(self.schema, attribute)
+        load_from_binary_method.add_instructions(
+            ['final {0} {1};'.format(get_generated_type(self.schema, attribute), attribute_name)])
+
+    def _load_from_binary_var_fill_array(self, attribute, load_from_binary_method):
+        attribute_typename = attribute['type']
+        attribute_sizename = attribute['size']
+        if attribute_sizename == 0:
+            attribute_sizename = 'byteArray.length'
+        attribute_name = attribute['name']
+        var_type = get_generated_type(self.schema, attribute)
+        load_from_binary_method.add_instructions(['let {0}ByteSize = {1}'.format(attribute_name, attribute_sizename)])
+        load_from_binary_method.add_instructions(['const {0}{1} = []'
+                                                  .format(attribute_name,
+                                                          '' if attribute_typename in ['number', 'Uint8Array'] else
+                                                          ': ' + var_type)])
+        load_from_binary_method.add_instructions(['while ({0}ByteSize > 0) {{'.format(attribute_name)], False)
+        load_from_binary_method.add_instructions(
+            [indent('{1}item = {0}.loadFromBinary(Uint8Array.from(byteArray))'
+                    .format(get_generated_class_name(attribute_typename, attribute, self.schema),
+                            '' if self._is_conditional_attribute(attribute) else 'const '))])
+        load_from_binary_method.add_instructions([indent('{0}.push(item)'.format(attribute_name))])
+        load_from_binary_method.add_instructions([indent('{0}ByteSize -= item.getSize()'.format(attribute_name))])
+        load_from_binary_method.add_instructions([indent('byteArray.splice(0, item.getSize())')])
+        load_from_binary_method.add_instructions(['}'], False)
 
     @staticmethod
     def is_count_size_field(field):
@@ -413,7 +472,10 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                 AttributeType.BUFFER: self._load_from_binary_buffer,
                 AttributeType.ARRAY: self._load_from_binary_array,
                 AttributeType.CUSTOM: self._load_from_binary_custom,
-                AttributeType.FLAGS: self._load_from_binary_flags
+                AttributeType.FLAGS: self._load_from_binary_flags,
+                AttributeType.SIZE_FIELD: self._load_from_binary_field,
+                AttributeType.FILL_ARRAY: self._load_from_binary_var_fill_array,
+                AttributeType.VAR_ARRAY: self._load_from_binary_var_fill_array
             }
 
             attribute_kind = get_real_attribute_type(attribute)
@@ -428,7 +490,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                                                                                                    attribute['name']))
         lines = ['const {0}Bytes = {1}'.format(attribute['name'], method)]
         lines += ['newArray = GeneratorUtils.concatTypedArrays(newArray, {0})'.format(attribute['name']+'Bytes')]
-        self._add_attribute_condition_if_needed(attribute, serialize_method, 'this.', lines, False)
+        self._add_attribute_condition_if_needed(attribute, serialize_method, 'this.', lines, False, False)
 
     def _serialize_attribute_array(self, attribute, serialize_method):
         attribute_typename = attribute['type']
@@ -468,7 +530,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                                                                   attribute_name,
                                                                   '!' if is_condition else '')]
         lines += ['newArray = GeneratorUtils.concatTypedArrays(newArray, {0})'.format(attribute_bytes_name)]
-        self._add_attribute_condition_if_needed(attribute, serialize_method, 'this.', lines, False)
+        self._add_attribute_condition_if_needed(attribute, serialize_method, 'this.', lines, False, False)
 
     def _serialize_attribute_flags(self, attribute, serialize_method):
         size = get_attribute_size(self.schema, attribute)
@@ -479,7 +541,7 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                                                                                                    attribute['name']))
         lines = ['const {0}Bytes = {1}'.format(attribute['name'], method)]
         lines += ['newArray = GeneratorUtils.concatTypedArrays(newArray, {0})'.format(attribute['name']+'Bytes')]
-        self._add_attribute_condition_if_needed(attribute, serialize_method, 'this.', lines, False)
+        self._add_attribute_condition_if_needed(attribute, serialize_method, 'this.', lines, False, False)
 
     def _generate_serialize_attributes(self, attribute, serialize_method):
         attribute_name = attribute['name']
@@ -502,11 +564,47 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                 AttributeType.BUFFER: self._serialize_attribute_buffer,
                 AttributeType.ARRAY: self._serialize_attribute_array,
                 AttributeType.CUSTOM: self._serialize_attribute_custom,
-                AttributeType.FLAGS: self._serialize_attribute_flags
+                AttributeType.FLAGS: self._serialize_attribute_flags,
+                AttributeType.SIZE_FIELD: self._serialize_attribute_size_field,
+                AttributeType.FILL_ARRAY: self._serialize_attribute_array,
+                AttributeType.VAR_ARRAY: self._serialize_attribute_array
             }
 
             attribute_kind = get_real_attribute_type(attribute)
             serialize_attribute[attribute_kind](attribute, serialize_method)
+
+    def _serialize_attribute_size_field(self, attribute, serialize_method):
+        attribute_name = attribute['name']
+        size = get_attribute_size(self.schema, attribute)
+        parent_attribute = get_attribute_property_equal(self.schema, self.class_schema['layout'], 'size', attribute['name'])
+        if parent_attribute is not None and is_var_array(parent_attribute):
+            size_statement = self._get_size_statement(parent_attribute)
+            full_property_name = '({0}) {1}'.format(get_builtin_type(size), size_statement[:-1])
+            print('get size update', size_statement, attribute)
+        else:
+            size_extension = '.size()' if attribute_name.endswith('Count') else '.array().length'
+            full_property_name = '({0}) {1}'.format(get_builtin_type(size), 'this.' +
+                                                    get_attribute_if_size(attribute['name'], self.class_schema['layout'],
+                                                                          self.schema) + size_extension)
+        line = 'dataOutputStream.{0}({1})'
+        serialize_method.add_instructions([line])
+
+    def _get_size_statement(self, attribute):
+        kind = get_real_attribute_type(attribute)
+
+        if kind == AttributeType.SIMPLE:
+            return '{0}; // {1}'.format(attribute['size'], attribute['name'])
+        elif kind == AttributeType.BUFFER:
+            return 'this.{0}.array().length;'.format(attribute['name'])
+        elif is_array(kind):
+            return 'this.{0}.stream().mapToInt(o -> o.getSize()).sum();'.format(attribute['name'])
+        elif kind == AttributeType.FLAGS:
+            return '{0}.values()[0].getSize(); // {1}'.format(get_generated_class_name(attribute['type'], attribute, self.schema),
+                                                              attribute['name'])
+        elif kind == AttributeType.SIZE_FIELD:
+            return '{0}; // {1}'.format(attribute['size'], attribute['name'])
+        else:
+            return 'this.{0}.getSize();'.format(attribute['name'])
 
     def _add_getters_field(self):
         self._recursive_attribute_iterator(
@@ -529,6 +627,9 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
 
         self._recursive_attribute_iterator(self.name, self._generate_load_from_binary_attributes,
                                            load_from_binary_method, [self.base_class_name, self._get_body_class_name()])
+
+        for line in self._load_from_binary_condition_lines:
+            load_from_binary_method.add_instructions([line], False)
 
         load_from_binary_method.add_instructions(['return new {0}({1})'.format(self.generated_class_name,
                                                                                ', '.join(self.load_from_binary_atrribute_list))])

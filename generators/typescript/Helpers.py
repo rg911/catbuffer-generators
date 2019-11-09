@@ -55,7 +55,7 @@ def get_byte_convert_method_name(size):
 def get_generated_type(schema, attribute):
     typename = attribute['type']
     attribute_type = get_real_attribute_type(attribute)
-    if attribute_type == AttributeType.SIMPLE:
+    if attribute_type in (AttributeType.SIMPLE, AttributeType.SIZE_FIELD):
         return get_builtin_type(get_attribute_size(schema, attribute))
     if attribute_type == AttributeType.BUFFER:
         return 'Uint8Array'
@@ -63,7 +63,7 @@ def get_generated_type(schema, attribute):
     if not is_byte_type(typename):
         typename = get_generated_class_name(typename, attribute, schema)
 
-    if attribute_type == AttributeType.ARRAY:
+    if is_array(attribute_type):
         return '{0}[]'.format(typename)
     if attribute_type == AttributeType.FLAGS:
         return 'number'
@@ -162,6 +162,12 @@ class AttributeType(Enum):
 
     ENUM = 6
 
+    SIZE_FIELD = 7
+
+    FILL_ARRAY = 8
+
+    VAR_ARRAY = 9
+
     UNKNOWN = 100
 
 
@@ -175,16 +181,16 @@ def get_attribute_size(schema, attribute_value):
 
 
 def get_real_attribute_type(attribute):
+    real_type = get_type_by_attribute(attribute)
+
+    if real_type != AttributeType.UNKNOWN:
+        return real_type
+
     attribute_type = attribute['type']
 
-    if is_flags_enum(attribute_type):
-        return AttributeType.FLAGS
-
-    if is_struct_type(attribute_type) or 'size' not in attribute:
-        return AttributeType.CUSTOM
-
-    if is_enum_type(attribute_type):
-        return AttributeType.ENUM
+    real_type = get_type_by_attribute_type(attribute, attribute_type)
+    if real_type != AttributeType.UNKNOWN:
+        return real_type
 
     if 'size' in attribute:
         attribute_size = attribute['size']
@@ -200,8 +206,64 @@ def get_real_attribute_type(attribute):
     return AttributeType.BUFFER
 
 
+def get_type_by_attribute(attribute):
+    if is_var_array(attribute):
+        return AttributeType.VAR_ARRAY
+
+    if is_fill_array(attribute):
+        return AttributeType.FILL_ARRAY
+
+    # if is_count_size_field(attribute):
+    #     return AttributeType.SIZE_FIELD
+
+    return AttributeType.UNKNOWN
+
+def get_type_by_attribute_type(attribute, attribute_type):
+    if is_flags_enum(attribute_type):
+        return AttributeType.FLAGS
+
+    if is_struct_type(attribute_type) or 'size' not in attribute:
+        return AttributeType.CUSTOM
+
+    if is_enum_type(attribute_type):
+        return AttributeType.ENUM
+
+    return AttributeType.UNKNOWN
+
+def return_attribute_type(attribute_type):
+    return attribute_type
+
 def is_flags_enum(name):
     return name.endswith('Flags')
 
+
+def is_var_array(attribute):
+    return 'disposition' in attribute and attribute['disposition'] == TypeDescriptorDisposition.Var.value
+
+
+def is_array(attribute_type):
+    return attribute_type in (AttributeType.ARRAY, AttributeType.VAR_ARRAY, AttributeType.FILL_ARRAY)
+
+
+def is_sorted_array(attribute):
+    return 'sort_key' in attribute
+
+
+def is_count_size_field(attribute):
+    return attribute['name'].endswith('Size') or attribute['name'].endswith('Count')
+
+
 def is_reserved_field(attribute):
     return '_Reserved' in attribute['name']
+
+
+def is_inline(attribute):
+    return 'disposition' in attribute and attribute['disposition'] == TypeDescriptorDisposition.Inline.value
+
+
+def is_const(attribute):
+    return 'disposition' in attribute and attribute['disposition'] == TypeDescriptorDisposition.Const.value
+
+
+def is_fill_array(attribute):
+    return 'disposition' in attribute and attribute['disposition'] == TypeDescriptorDisposition.Fill.value
