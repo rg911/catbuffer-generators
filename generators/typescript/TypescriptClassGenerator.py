@@ -256,7 +256,10 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
             line += 'this.{0}.length;'.format(attribute['name'])
         elif attribute_kind in (AttributeType.ARRAY, AttributeType.VAR_ARRAY, AttributeType.FILL_ARRAY):
             line = ''
-            line += 'this.{0}.forEach((o) => size += o.getSize());'.format(attribute['name'])
+            if attribute['type'] == 'EntityType':
+                line += 'this.{0}.forEach(() => size += 2);'.format(attribute['name'])
+            else:
+                line += 'this.{0}.forEach((o) => size += o.getSize());'.format(attribute['name'])
         elif attribute_kind == AttributeType.FLAGS:
             line += self._get_custom_attribute_size_getter(attribute)
         else:
@@ -385,12 +388,21 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                 [indent('{1}item = {0}'.format(read_method_name, '' if self._is_conditional_attribute(attribute) else 'const '))])
             load_from_binary_method.add_instructions([indent('{0}.add(stream.{1}())'.format(attribute_name, get_read_method_name(1)))])
         else:
-            load_from_binary_method.add_instructions(
-                [indent('{1}item = {0}.loadFromBinary(Uint8Array.from(byteArray))'
-                        .format(get_generated_class_name(attribute_typename, attribute, self.schema),
-                                '' if self._is_conditional_attribute(attribute) else 'const '))])
+            if attribute_typename == 'EntityType':
+                entity_type_const_delaration = 'GeneratorUtils.getBytes(Uint8Array.from(byteArray), 2)'
+                read_method_name = get_byte_convert_method_name(2).format(entity_type_const_delaration)
+                load_from_binary_method.add_instructions(
+                    [indent('{1}item = {0}'
+                            .format(read_method_name,
+                                    '' if self._is_conditional_attribute(attribute) else 'const '))])
+            else:
+                load_from_binary_method.add_instructions(
+                    [indent('{1}item = {0}.loadFromBinary(Uint8Array.from(byteArray))'
+                            .format(get_generated_class_name(attribute_typename, attribute, self.schema),
+                                    '' if self._is_conditional_attribute(attribute) else 'const '))])
         load_from_binary_method.add_instructions([indent('{0}.push(item)'.format(attribute_name))])
-        load_from_binary_method.add_instructions([indent('byteArray.splice(0, item.getSize())')])
+        load_from_binary_method.add_instructions([indent('byteArray.splice(0, {0})'.format(
+            'item.getSize()' if attribute_typename != 'EntityType' else '2'))])
         load_from_binary_method.add_instructions(['}'], False)
 
     def _load_from_binary_custom(self, attribute, load_from_binary_method):
@@ -504,8 +516,12 @@ class TypescriptClassGenerator(TypescriptGeneratorBase):
                 [indent(byte_line)])
         else:
             attribute_bytes_name = self._get_serialize_name(attribute_name)
-            serialize_method.add_instructions(
-                [indent('const {0} = item.serialize()'.format(attribute_bytes_name))])
+            if attribute_typename == 'EntityType':
+                serialize_method.add_instructions(
+                    [indent('const {0} = GeneratorUtils.uintToBuffer(item, 2)'.format(attribute_bytes_name))])
+            else:
+                serialize_method.add_instructions(
+                    [indent('const {0} = item.serialize()'.format(attribute_bytes_name))])
             serialize_method.add_instructions(
                 [indent('newArray = GeneratorUtils.concatTypedArrays(newArray, {0})'.format(attribute_bytes_name))])
         serialize_method.add_instructions(['})'], True)

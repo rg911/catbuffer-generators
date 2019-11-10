@@ -64,7 +64,7 @@ def get_generated_type(schema, attribute):
         typename = get_generated_class_name(typename, attribute, schema)
 
     if is_array(attribute_type):
-        return '{0}[]'.format(typename)
+        return '{0}[]'.format(typename if typename != 'EntityTypeDto' else 'number')
     if attribute_type == AttributeType.FLAGS:
         return 'number'
     return typename
